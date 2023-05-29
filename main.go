@@ -14,20 +14,30 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type FormData struct {
-	Study   string
-	Year    string
-	Code    string
-	Type    string
-	Answers bool
-	File    multipart.File
+type Index struct {
+	Exams   []ExamData
+	Courses []Course
 }
 
-func (fd *FormData) getDesiredObjectName() string {
+type Course struct {
+	Code  string
+	Title string
+	Year  string
+}
+
+type ExamData struct {
+	Study   string
+	Code    string
+	Type    string
+	Date    string
+	Answers bool
+}
+
+func (fd *ExamData) getDesiredObjectName() string {
 	if fd.Answers {
-		return fmt.Sprintf("uploads/%s/%s/%s/%s_answers.pdf", fd.Study, fd.Year, fd.Code, fd.Type)
+		return fmt.Sprintf("uploads/%s/%s/%s_%s_answers.pdf", fd.Study, fd.Code, fd.Type, fd.Date)
 	} else {
-		return fmt.Sprintf("uploads/%s/%s/%s/%s.pdf", fd.Study, fd.Year, fd.Code, fd.Type)
+		return fmt.Sprintf("uploads/%s/%s/%s_%s.pdf", fd.Study, fd.Code, fd.Type, fd.Date)
 	}
 }
 
@@ -70,6 +80,8 @@ func uploadFormHandler(w http.ResponseWriter, r *http.Request) {
 						<option value="resit">Resit</option>
 						<option value="summary">Summary</option>
 					</select>
+					<label for="date">Date of Exam/Resit/Summary</label>
+					<input type="date" id="date" name="Date">
 					<label for="answers">
 					<input type="checkbox" id="answers" name="answers">
 					Answers
@@ -79,6 +91,24 @@ func uploadFormHandler(w http.ResponseWriter, r *http.Request) {
 					<br><br>
 					<input type="submit" value="Upload">
 				</form>
+				<br/>
+				<h1> Add Course </h1>
+				<form action="/upload" method="post" enctype="multipart/form-data">
+					<label for="study">Study:</label>
+					<select id="study" name="study">
+					  <option value="computer-science">Computer Science</option>
+					  <option value="applied-mathematics">Applied Mathematics</option>
+					</select>
+					<label for="year">Academic year:</label>
+					<select id="year" name="year">
+						<option value="first-year">First Year</option>
+						<option value="second-year">Second Year</option>
+						<option value="third-year">Third Year</option>
+						<option value="master">Master</option>
+					</select>
+					<input type="submit" value="Upload">
+				</form>
+
 			</body>
 		</html>
 	`
@@ -94,16 +124,15 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	upload := FormData{
+	upload := ExamData{
 		Study:   r.FormValue("study"),
-		Year:    r.FormValue("year"),
+		Date:    r.FormValue("year"),
 		Code:    r.FormValue("code"),
 		Type:    r.FormValue("type"),
 		Answers: r.FormValue("answers") == "on",
-		File:    file,
 	}
 
-	err = uploadFile(w, upload)
+	err = uploadFile(w, upload, file)
 	if err != nil {
 		fmt.Fprintf(w, "%s", err)
 		return
@@ -113,7 +142,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // uploadFile uploads an object.
-func uploadFile(w io.Writer, upload FormData) error {
+func uploadFile(w io.Writer, upload ExamData, f multipart.File) error {
 	bucket := os.Getenv("GCLOUD_BUCKET")
 
 	ctx := context.Background()
@@ -134,12 +163,16 @@ func uploadFile(w io.Writer, upload FormData) error {
 
 	// Upload an object with storage.Writer.
 	wc := o.NewWriter(ctx)
-	if _, err = io.Copy(wc, upload.File); err != nil {
+	if _, err = io.Copy(wc, f); err != nil {
 		return fmt.Errorf("io.Copy: %w", err)
 	}
 	if err := wc.Close(); err != nil {
 		return fmt.Errorf("Writer.Close: %w", err)
 	}
-	fmt.Fprintf(w, "Blob %v uploaded.\n", upload.File)
+	fmt.Fprintf(w, "Blob %v uploaded.\n", upload.getDesiredObjectName())
 	return nil
 }
+
+//func getIndexFile(w io.Writer) error {
+//
+//}
